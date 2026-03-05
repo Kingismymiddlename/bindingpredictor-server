@@ -20,13 +20,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_BASE = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "ai": "google/gemini-2.0-flash"}
+    return {"status": "ok", "ai": "groq/llama-3.3-70b"}
 
 
 @app.get("/protein-info")
@@ -124,8 +125,8 @@ class PredictRequest(BaseModel):
 
 @app.post("/predict")
 async def predict(req: PredictRequest):
-    if not GEMINI_API_KEY:
-        return {"error": "GEMINI_API_KEY not configured on server."}
+    if not GROQ_API_KEY:
+        return {"error": "GROQ_API_KEY not configured on server."}
 
     protein_str = json.dumps(req.protein, indent=2)
     ligand_str = json.dumps(req.ligand, indent=2)
@@ -157,27 +158,24 @@ Required keys:
 
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(
-            f"{GEMINI_BASE}?key={GEMINI_API_KEY}",
-            headers={"Content-Type": "application/json"},
+            GROQ_BASE,
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
             json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "maxOutputTokens": 1500,
-                    "responseMimeType": "application/json"
-                }
+                "model": GROQ_MODEL,
+                "messages": [
+                    {"role": "system", "content": "You are a JSON API for computational chemistry. Output only raw JSON objects. No markdown. No explanation. Start with { end with }."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.2,
+                "max_tokens": 1500,
+                "response_format": {"type": "json_object"}
             }
         )
         data = resp.json()
-
         if "error" in data:
-            return {"error": data["error"].get("message", "Gemini API error")}
+            return {"error": data["error"].get("message", "Groq API error")}
 
-        try:
-            text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except (KeyError, IndexError):
-            return {"error": "Unexpected response from Gemini API"}
-
+        text = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
         text = re.sub(r'^```json\s*', '', text)
         text = re.sub(r'^```\s*', '', text)
         text = re.sub(r'\s*```$', '', text).strip()
