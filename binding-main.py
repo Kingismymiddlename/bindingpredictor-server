@@ -20,19 +20,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-GROQ_BASE = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "ai": "groq/llama-3.3-70b"}
+    return {"status": "ok", "ai": "google/gemini-2.0-flash"}
 
 
 @app.get("/protein-info")
 async def protein_info(name: str):
-    """Fetch protein data from UniProt"""
     result = {"name": name, "uniprot_id": "", "full_name": "", "organism": "",
               "length": "", "function": "", "binding_sites": [], "disease": ""}
     try:
@@ -53,23 +51,19 @@ async def protein_info(name: str):
                     result["full_name"] = rec.get("fullName", {}).get("value", name)
                     result["organism"] = entry.get("organism", {}).get("scientificName", "")
                     result["length"] = entry.get("sequence", {}).get("length", "")
-                    comments = entry.get("comments", [])
-                    for c in comments:
+                    for c in entry.get("comments", []):
                         if c.get("commentType") == "FUNCTION":
                             texts = c.get("texts", [])
                             if texts:
                                 result["function"] = texts[0].get("value", "")[:500]
                         if c.get("commentType") == "DISEASE":
-                            disease = c.get("disease", {})
-                            result["disease"] = disease.get("diseaseName", {}).get("value", "")
-                    features = entry.get("features", [])
-                    for f in features:
+                            result["disease"] = c.get("disease", {}).get("diseaseName", {}).get("value", "")
+                    for f in entry.get("features", []):
                         if f.get("type") == "Binding site":
-                            desc = f.get("description", "")
                             loc = f.get("location", {})
                             start = loc.get("start", {}).get("value", "")
                             end = loc.get("end", {}).get("value", "")
-                            result["binding_sites"].append(f"Position {start}-{end}: {desc}")
+                            result["binding_sites"].append(f"Position {start}-{end}: {f.get('description','')}")
     except Exception as e:
         result["error"] = str(e)
     return result
@@ -77,7 +71,6 @@ async def protein_info(name: str):
 
 @app.get("/ligand-info")
 async def ligand_info(name: str):
-    """Fetch ligand data from ChEMBL"""
     result = {"name": name, "chembl_id": "", "molecular_formula": "",
               "molecular_weight": "", "alogp": "", "known_targets": [],
               "max_phase": "", "indication": ""}
@@ -98,9 +91,7 @@ async def ligand_info(name: str):
                     result["molecular_weight"] = props.get("full_mwt", "")
                     result["alogp"] = props.get("alogp", "")
                     result["max_phase"] = str(mol.get("max_phase", ""))
-                    indication = mol.get("indication_class", "") or ""
-                    result["indication"] = indication
-
+                    result["indication"] = mol.get("indication_class", "") or ""
                     chembl_id = result["chembl_id"]
                     if chembl_id:
                         act_resp = await client.get(
@@ -109,10 +100,8 @@ async def ligand_info(name: str):
                                     "limit": 5, "assay_type": "B"}
                         )
                         if act_resp.status_code == 200:
-                            act_data = act_resp.json()
-                            activities = act_data.get("activities", [])
                             seen = set()
-                            for a in activities:
+                            for a in act_resp.json().get("activities", []):
                                 target = a.get("target_pref_name", "")
                                 if target and target not in seen:
                                     seen.add(target)
@@ -135,8 +124,8 @@ class PredictRequest(BaseModel):
 
 @app.post("/predict")
 async def predict(req: PredictRequest):
-    if not GROQ_API_KEY:
-        return {"error": "GROQ_API_KEY not configured on server."}
+    if not GEMINI_API_KEY:
+        return {"error": "GEMINI_API_KEY not configured on server."}
 
     protein_str = json.dumps(req.protein, indent=2)
     ligand_str = json.dumps(req.ligand, indent=2)
@@ -157,35 +146,38 @@ Required keys:
 - binding_affinity: one of "Strong", "Moderate", "Weak", "Unlikely"
 - confidence: integer 0-100
 - mechanism: string (2-3 sentences explaining the molecular interaction mechanism)
-- key_interactions: array of 3-4 strings (specific interaction types e.g. "Hydrogen bond with Lys745", "Hydrophobic contact with Val726")
-- selectivity: string (1-2 sentences on how selective this ligand is for this target vs others)
+- key_interactions: array of 3-4 strings (specific interaction types e.g. "Hydrogen bond with Lys745")
+- selectivity: string (1-2 sentences on selectivity vs other targets)
 - druggability: one of "High", "Moderate", "Low"
 - druggability_reason: string (1-2 sentences)
-- similar_known_binders: array of 2-3 strings (known drugs/compounds that bind this target)
+- similar_known_binders: array of 2-3 strings (known drugs that bind this target)
 - clinical_relevance: string (1-2 sentences on therapeutic relevance)
 - limitations: string (1 sentence on limitations of this prediction)
 """
 
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(
-            GROQ_BASE,
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+            f"{GEMINI_BASE}?key={GEMINI_API_KEY}",
+            headers={"Content-Type": "application/json"},
             json={
-                "model": GROQ_MODEL,
-                "messages": [
-                    {"role": "system", "content": "You are a JSON API for computational chemistry. Output only raw JSON objects. No markdown. No explanation. Start with { end with }."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.2,
-                "max_tokens": 1500,
-                "response_format": {"type": "json_object"}
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 1500,
+                    "responseMimeType": "application/json"
+                }
             }
         )
         data = resp.json()
-        if "error" in data:
-            return {"error": data["error"].get("message", "Groq API error")}
 
-        text = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        if "error" in data:
+            return {"error": data["error"].get("message", "Gemini API error")}
+
+        try:
+            text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except (KeyError, IndexError):
+            return {"error": "Unexpected response from Gemini API"}
+
         text = re.sub(r'^```json\s*', '', text)
         text = re.sub(r'^```\s*', '', text)
         text = re.sub(r'\s*```$', '', text).strip()
