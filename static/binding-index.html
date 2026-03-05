@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BindPredict — Protein-Ligand Binding Predictor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400&display=swap" rel="stylesheet"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{min-height:100vh;background:#060a10;color:#e2e8f0;font-family:'DM Sans',system-ui,sans-serif}
+    ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:2px}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+
+    .nav{border-bottom:1px solid rgba(255,255,255,0.06);padding:16px 32px;display:flex;align-items:center;justify-content:space-between}
+    .nav-logo{display:flex;align-items:center;gap:12px}
+    .nav-icon{width:32px;height:32px;border-radius:8px;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.3);display:flex;align-items:center;justify-content:center;font-size:16px}
+    .nav-title{font-size:14px;font-weight:500;color:#f1f5f9}
+    .nav-sub{font-size:10px;color:#334155}
+    .nav-badge{font-size:10px;color:#334155;font-family:'DM Mono',monospace}
+
+    .main{max-width:1100px;margin:0 auto;padding:32px 24px}
+
+    /* Input panel */
+    .input-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+    .input-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:20px}
+    .input-card-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+    .input-card-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px}
+    .protein-icon{background:rgba(56,189,248,0.12);border:1px solid rgba(56,189,248,0.25)}
+    .ligand-icon{background:rgba(168,85,247,0.12);border:1px solid rgba(168,85,247,0.25)}
+    .input-card-title{font-size:12px;font-weight:500;color:#94a3b8;letter-spacing:0.08em;text-transform:uppercase}
+    .input-field{width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:14px;font-family:'DM Sans',system-ui,sans-serif;outline:none;transition:border-color 0.2s}
+    .input-field:focus{border-color:rgba(168,85,247,0.4)}
+    .input-field::placeholder{color:#1e293b}
+    .input-hint{font-size:10px;color:#334155;margin-top:6px}
+    .examples-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+    .ex-btn{background:transparent;border:1px solid rgba(255,255,255,0.06);color:#334155;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:10px;transition:all 0.15s}
+    .ex-btn:hover{color:#94a3b8;border-color:rgba(255,255,255,0.15)}
+
+    .context-row{display:flex;gap:12px;margin-bottom:20px;align-items:flex-end}
+    .context-field{flex:1;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:10px 14px;color:#e2e8f0;font-size:13px;font-family:'DM Sans',system-ui,sans-serif;outline:none}
+    .context-field:focus{border-color:rgba(168,85,247,0.3)}
+    .context-field::placeholder{color:#1e293b}
+    .predict-btn{background:rgba(168,85,247,0.1);color:#c084fc;border:1px solid rgba(168,85,247,0.3);border-radius:8px;padding:10px 28px;cursor:pointer;font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px;transition:all 0.2s;white-space:nowrap}
+    .predict-btn:hover:not(:disabled){background:#a855f7;color:#fff;transform:translateY(-1px)}
+    .predict-btn:disabled{color:#334155;border-color:rgba(255,255,255,0.05);cursor:not-allowed}
+    .spinner{width:11px;height:11px;border:1.5px solid #334155;border-top-color:#c084fc;border-radius:50%;animation:spin 0.8s linear infinite}
+
+    .error-box{background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);border-radius:8px;padding:12px 16px;color:#fca5a5;font-size:13px;margin-bottom:20px}
+
+    /* Data cards shown after fetching */
+    .data-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+    .data-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:16px;animation:fadeIn 0.4s ease}
+    .data-label{font-size:9px;color:#334155;letter-spacing:0.14em;text-transform:uppercase;margin-bottom:10px}
+    .data-name{font-size:15px;color:#f1f5f9;font-weight:500;margin-bottom:6px;font-family:'Crimson Pro',Georgia,serif}
+    .data-id{font-size:10px;color:#475569;font-family:'DM Mono',monospace;margin-bottom:8px}
+    .data-row{display:flex;gap:8px;margin-bottom:4px;align-items:baseline}
+    .data-key{font-size:10px;color:#334155;min-width:80px;flex-shrink:0}
+    .data-val{font-size:11px;color:#94a3b8}
+    .data-function{font-size:11px;color:#64748b;line-height:1.6;margin-top:8px;border-top:1px solid rgba(255,255,255,0.05);padding-top:8px}
+
+    /* Results */
+    .results-panel{animation:fadeIn 0.6s ease}
+    .binding-hero{display:flex;gap:20px;align-items:stretch;margin-bottom:20px}
+    .affinity-box{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:24px 28px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:160px}
+    .affinity-label{font-size:9px;color:#475569;letter-spacing:0.14em;text-transform:uppercase;margin-bottom:10px}
+    .affinity-value{font-size:28px;font-weight:700;font-family:'Crimson Pro',Georgia,serif;margin-bottom:4px}
+    .affinity-strong{color:#34d399}.affinity-moderate{color:#fbbf24}.affinity-weak{color:#94a3b8}.affinity-unlikely{color:#ef4444}
+    .confidence-ring{width:70px;height:70px;margin-top:12px;position:relative;display:flex;align-items:center;justify-content:center}
+    .confidence-ring svg{position:absolute;top:0;left:0;transform:rotate(-90deg)}
+    .confidence-num{font-size:16px;font-weight:700;color:#c084fc;font-family:'DM Mono',monospace}
+    .confidence-label-small{font-size:9px;color:#334155;margin-top:2px}
+    .druggability-box{flex:1;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:20px}
+    .drug-header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+    .drug-badge{border-radius:6px;padding:4px 12px;font-size:12px;font-weight:600}
+    .drug-high{background:rgba(52,211,153,0.12);color:#34d399;border:1px solid rgba(52,211,153,0.25)}
+    .drug-moderate{background:rgba(251,191,36,0.12);color:#fbbf24;border:1px solid rgba(251,191,36,0.25)}
+    .drug-low{background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.25)}
+    .drug-reason{font-size:12px;color:#64748b;line-height:1.65}
+    .clinical-text{font-size:13px;color:#94a3b8;line-height:1.7;margin-top:10px;font-family:'Crimson Pro',Georgia,serif;font-size:14px}
+
+    .cards-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+    .result-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:18px}
+    .rc-label{font-size:9px;color:#475569;letter-spacing:0.14em;text-transform:uppercase;margin-bottom:12px}
+    .interaction-item{display:flex;gap:8px;margin-bottom:8px;align-items:flex-start}
+    .interaction-dot{width:5px;height:5px;border-radius:50%;background:#a855f7;flex-shrink:0;margin-top:5px}
+    .interaction-text{font-size:12px;color:#94a3b8;line-height:1.5}
+    .binder-item{display:flex;gap:8px;margin-bottom:6px;align-items:center}
+    .binder-dot{width:5px;height:5px;border-radius:50%;background:#38bdf8;flex-shrink:0}
+    .binder-text{font-size:12px;color:#94a3b8}
+
+    .mechanism-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:18px;margin-bottom:14px}
+    .mechanism-text{font-size:15px;color:#cbd5e1;line-height:1.8;font-family:'Crimson Pro',Georgia,serif}
+    .selectivity-text{font-size:13px;color:#64748b;line-height:1.65;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.05)}
+
+    .limitation-bar{background:rgba(251,191,36,0.04);border:1px solid rgba(251,191,36,0.12);border-radius:8px;padding:10px 14px;font-size:11px;color:#92400e;display:flex;gap:8px;align-items:flex-start}
+
+    .empty{text-align:center;padding:64px 20px}
+    .empty-icon{font-size:52px;margin-bottom:18px;opacity:0.12}
+    .empty-title{font-size:20px;font-family:'Crimson Pro',Georgia,serif;color:#334155;margin-bottom:6px}
+    .empty-sub{font-size:12px;color:#1e293b}
+
+    .loading-state{text-align:center;padding:48px 20px;animation:fadeIn 0.4s ease}
+    .loading-icon{font-size:36px;margin-bottom:14px;animation:pulse 1.5s ease infinite}
+    .loading-text{font-size:13px;color:#475569}
+
+    @media(max-width:700px){.input-grid,.data-grid,.cards-grid{grid-template-columns:1fr}.binding-hero{flex-direction:column}}
+  </style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-logo">
+    <div class="nav-icon">🔬</div>
+    <div>
+      <div class="nav-title">BindPredict</div>
+      <div class="nav-sub">Protein-Ligand Binding Predictor · UniProt + ChEMBL</div>
+    </div>
+  </div>
+  <div class="nav-badge">● Llama 3.3 · Free · No login required</div>
+</div>
+
+<div class="main">
+  <!-- Input -->
+  <div class="input-grid">
+    <div class="input-card">
+      <div class="input-card-header">
+        <div class="input-card-icon protein-icon">🧬</div>
+        <div class="input-card-title">Protein Target</div>
+      </div>
+      <input class="input-field" id="proteinInput" placeholder="e.g. EGFR, ACE2, BRCA1, TP53"/>
+      <div class="input-hint">Gene name, protein name, or UniProt ID</div>
+      <div class="examples-row">
+        <button class="ex-btn" onclick="setProtein('EGFR')">EGFR</button>
+        <button class="ex-btn" onclick="setProtein('ACE2')">ACE2</button>
+        <button class="ex-btn" onclick="setProtein('BRCA1')">BRCA1</button>
+        <button class="ex-btn" onclick="setProtein('BCR-ABL')">BCR-ABL</button>
+        <button class="ex-btn" onclick="setProtein('VEGFR2')">VEGFR2</button>
+      </div>
+    </div>
+    <div class="input-card">
+      <div class="input-card-header">
+        <div class="input-card-icon ligand-icon">💊</div>
+        <div class="input-card-title">Drug / Ligand</div>
+      </div>
+      <input class="input-field" id="ligandInput" placeholder="e.g. Imatinib, Aspirin, Gefitinib"/>
+      <div class="input-hint">Drug name, compound name, or ChEMBL ID</div>
+      <div class="examples-row">
+        <button class="ex-btn" onclick="setLigand('Imatinib')">Imatinib</button>
+        <button class="ex-btn" onclick="setLigand('Gefitinib')">Gefitinib</button>
+        <button class="ex-btn" onclick="setLigand('Aspirin')">Aspirin</button>
+        <button class="ex-btn" onclick="setLigand('Metformin')">Metformin</button>
+        <button class="ex-btn" onclick="setLigand('Caffeine')">Caffeine</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="context-row">
+    <input class="context-field" id="contextInput" placeholder="Optional: disease context or research goal (e.g. 'non-small cell lung cancer treatment')"/>
+    <button class="predict-btn" id="predictBtn" onclick="runPrediction()">
+      Predict Binding →
+    </button>
+  </div>
+
+  <div id="errorBox" class="error-box" style="display:none"></div>
+
+  <!-- Data preview -->
+  <div id="dataGrid" class="data-grid" style="display:none"></div>
+
+  <!-- Loading -->
+  <div id="loadingState" class="loading-state" style="display:none">
+    <div class="loading-icon">⚛️</div>
+    <div class="loading-text" id="loadingText">Fetching data...</div>
+  </div>
+
+  <!-- Results -->
+  <div id="resultsPanel" class="results-panel" style="display:none"></div>
+
+  <!-- Empty -->
+  <div class="empty" id="emptyState">
+    <div class="empty-icon">🔬</div>
+    <div class="empty-title">Enter a protein and ligand to begin</div>
+    <div class="empty-sub">Pulls real data from UniProt & ChEMBL · AI-powered binding analysis · 100% free</div>
+  </div>
+</div>
+
+<script>
+  function setProtein(v){document.getElementById('proteinInput').value=v;}
+  function setLigand(v){document.getElementById('ligandInput').value=v;}
+  function showError(msg){const b=document.getElementById('errorBox');b.textContent='⚠ '+msg;b.style.display='block';}
+  function hideError(){document.getElementById('errorBox').style.display='none';}
+  function setLoading(show,msg=''){document.getElementById('loadingState').style.display=show?'block':'none';document.getElementById('loadingText').textContent=msg;}
+
+  function setRunning(loading,msg){
+    const btn=document.getElementById('predictBtn');
+    btn.disabled=loading;
+    btn.innerHTML=loading?`<span class="spinner"></span> ${msg}`:'Predict Binding →';
+  }
+
+  function affinityClass(a){
+    const map={'Strong':'affinity-strong','Moderate':'affinity-moderate','Weak':'affinity-weak','Unlikely':'affinity-unlikely'};
+    return map[a]||'affinity-weak';
+  }
+
+  function druggabilityClass(d){
+    const map={'High':'drug-high','Moderate':'drug-moderate','Low':'drug-low'};
+    return map[d]||'drug-moderate';
+  }
+
+  function confidenceRing(score){
+    const r=28;const circ=2*Math.PI*r;const dash=circ*(score/100);
+    const color=score>=70?'#a855f7':score>=40?'#fbbf24':'#ef4444';
+    return `<svg width="70" height="70" viewBox="0 0 70 70">
+      <circle cx="35" cy="35" r="${r}" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="5"/>
+      <circle cx="35" cy="35" r="${r}" fill="none" stroke="${color}" stroke-width="5"
+        stroke-dasharray="${dash} ${circ}" stroke-linecap="round"/>
+    </svg>`;
+  }
+
+  function renderDataCards(protein, ligand){
+    const grid=document.getElementById('dataGrid');
+    grid.style.display='grid';
+    grid.innerHTML=`
+      <div class="data-card">
+        <div class="data-label">Protein · UniProt</div>
+        <div class="data-name">${protein.full_name||protein.name}</div>
+        <div class="data-id">${protein.uniprot_id||'ID not found'} · ${protein.organism||''}</div>
+        <div class="data-row"><span class="data-key">Length</span><span class="data-val">${protein.length||'—'} aa</span></div>
+        <div class="data-row"><span class="data-key">Disease</span><span class="data-val">${protein.disease||'—'}</span></div>
+        ${protein.binding_sites?.length?`<div class="data-row"><span class="data-key">Binding sites</span><span class="data-val">${protein.binding_sites.length} found</span></div>`:''}
+        ${protein.function?`<div class="data-function">${protein.function.slice(0,200)}${protein.function.length>200?'…':''}</div>`:''}
+      </div>
+      <div class="data-card">
+        <div class="data-label">Ligand · ChEMBL</div>
+        <div class="data-name">${ligand.name}</div>
+        <div class="data-id">${ligand.chembl_id||'ID not found'}</div>
+        <div class="data-row"><span class="data-key">Formula</span><span class="data-val">${ligand.molecular_formula||'—'}</span></div>
+        <div class="data-row"><span class="data-key">MW</span><span class="data-val">${ligand.molecular_weight||'—'} Da</span></div>
+        <div class="data-row"><span class="data-key">LogP</span><span class="data-val">${ligand.alogp||'—'}</span></div>
+        <div class="data-row"><span class="data-key">Max phase</span><span class="data-val">${ligand.max_phase||'—'}</span></div>
+        ${ligand.indication?`<div class="data-row"><span class="data-key">Indication</span><span class="data-val">${ligand.indication}</span></div>`:''}
+        ${ligand.known_targets?.length?`<div class="data-row"><span class="data-key">Known targets</span><span class="data-val">${ligand.known_targets.length} in ChEMBL</span></div>`:''}
+      </div>`;
+  }
+
+  function renderResults(r){
+    const panel=document.getElementById('resultsPanel');
+    panel.style.display='block';
+    panel.innerHTML=`
+      <div class="binding-hero">
+        <div class="affinity-box">
+          <div class="affinity-label">Binding Affinity</div>
+          <div class="affinity-value ${affinityClass(r.binding_affinity)}">${r.binding_affinity}</div>
+          <div class="confidence-ring">
+            ${confidenceRing(r.confidence)}
+            <div style="text-align:center">
+              <div class="confidence-num">${r.confidence}</div>
+              <div class="confidence-label-small">confidence</div>
+            </div>
+          </div>
+        </div>
+        <div class="druggability-box">
+          <div class="drug-header">
+            <div class="rc-label" style="margin:0">Druggability</div>
+            <span class="drug-badge ${druggabilityClass(r.druggability)}">${r.druggability}</span>
+          </div>
+          <div class="drug-reason">${r.druggability_reason||''}</div>
+          <div class="clinical-text">${r.clinical_relevance||''}</div>
+        </div>
+      </div>
+
+      <div class="mechanism-card">
+        <div class="rc-label">Interaction Mechanism</div>
+        <div class="mechanism-text">${r.mechanism||''}</div>
+        ${r.selectivity?`<div class="selectivity-text">Selectivity: ${r.selectivity}</div>`:''}
+      </div>
+
+      <div class="cards-grid">
+        <div class="result-card">
+          <div class="rc-label">Key Molecular Interactions</div>
+          ${(r.key_interactions||[]).map(i=>`<div class="interaction-item"><div class="interaction-dot"></div><div class="interaction-text">${i}</div></div>`).join('')}
+        </div>
+        <div class="result-card">
+          <div class="rc-label">Similar Known Binders</div>
+          ${(r.similar_known_binders||[]).map(b=>`<div class="binder-item"><div class="binder-dot"></div><div class="binder-text">${b}</div></div>`).join('')}
+        </div>
+      </div>
+
+      ${r.limitations?`<div class="limitation-bar">⚠ ${r.limitations}</div>`:''}
+    `;
+  }
+
+  async function runPrediction(){
+    const protein=document.getElementById('proteinInput').value.trim();
+    const ligand=document.getElementById('ligandInput').value.trim();
+    if(!protein||!ligand){showError('Please enter both a protein and a ligand.');return;}
+
+    hideError();
+    document.getElementById('emptyState').style.display='none';
+    document.getElementById('resultsPanel').style.display='none';
+    document.getElementById('dataGrid').style.display='none';
+
+    try{
+      setRunning(true,'Fetching protein data...');
+      setLoading(true,'Looking up protein in UniProt...');
+
+      const [proteinData, ligandData] = await Promise.all([
+        fetch(`/protein-info?name=${encodeURIComponent(protein)}`).then(r=>r.json()),
+        fetch(`/ligand-info?name=${encodeURIComponent(ligand)}`).then(r=>r.json())
+      ]);
+
+      setLoading(true,'Fetching ligand data from ChEMBL...');
+      renderDataCards(proteinData, ligandData);
+
+      setRunning(true,'Running binding prediction...');
+      setLoading(true,'Analyzing binding interactions with AI...');
+
+      const context=document.getElementById('contextInput').value.trim();
+      const predResp=await fetch('/predict',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({protein:proteinData,ligand:ligandData,context})
+      });
+      const prediction=await predResp.json();
+      if(prediction.error)throw new Error(prediction.error);
+
+      setLoading(false);
+      renderResults(prediction);
+      setRunning(false);
+    }catch(e){
+      setLoading(false);
+      showError(e.message||'Something went wrong.');
+      setRunning(false);
+      document.getElementById('emptyState').style.display='block';
+    }
+  }
+</script>
+</body>
+</html>
